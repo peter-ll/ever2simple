@@ -142,7 +142,10 @@ class EverConverter(object):
             elif not os.path.exists(self.simple_filename):
                 os.makedirs(self.simple_filename)
             for i, note in enumerate(notes):
-                basename = note['title'].replace(' ','_').replace('/','-') + " (" + note['modifydate'] + " - " + str(i) + ")"
+                basename = note['title'].replace(' ','_').replace("|","=").replace("@","_")
+                for c in '\\/:*?"<>':
+                   basename = basename.replace(c, "-")
+                basename += " (" + note['modifydate'].replace(":","") + " - " + str(i) + ")"
                 output_file_path = os.path.join(self.simple_filename, basename + '.txt')
                 if os.path.exists(output_file_path):
                     print "Not creating second file called %s" % output_file_path

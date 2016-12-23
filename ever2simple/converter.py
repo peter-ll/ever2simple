@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 from csv import DictWriter
 from cStringIO import StringIO
 from dateutil.parser import parse
@@ -12,8 +13,8 @@ class EverConverter(object):
     """Evernote conversion runner
     """
 
-    fieldnames = ['createdate', 'modifydate', 'content', 'tags']
-    date_fmt = '%h %d %Y %H:%M:%S'
+    fieldnames = ['createdate', 'modifydate', 'content', 'tags', 'resources']
+    date_fmt = '%Y-%m-%d %H:%M:%S'
 
     def __init__(self, enex_filename, simple_filename=None, fmt='json'):
         self.enex_filename = os.path.expanduser(enex_filename)
@@ -41,6 +42,26 @@ class EverConverter(object):
         for note in raw_notes:
             note_dict = {}
             title = note.xpath('title')[0].text
+            note_dict['title'] = title
+
+            resources = []
+            for resource in note.xpath("resource"):
+                mime = resource.xpath("mime")[0].text
+                if mime == "image/png" or "image/jpeg" or "image/gif" or "image/html":
+                    try:
+                        try:
+                           r_title = resource.xpath("resource-attributes")[0].xpath("file-name")[0].text
+                        except IndexError:
+                           r_title = "unknown " + mime.replace("image/","")
+                        data = resource.xpath("data")[0].text
+                        resources.append({"filename": r_title, "data": data})
+                    except IndexError:
+                        print "Failed exporting resource in %s with mime %s" % (title, mime)
+                        raise
+                else:
+                    print "%s has resource %s" % (title, mime)
+            note_dict['resources'] = resources
+
             # Use dateutil to figure out these dates
             # 20110610T182917Z
             created_string = parse('19700101T000017Z')
@@ -121,6 +142,19 @@ class EverConverter(object):
             elif not os.path.exists(self.simple_filename):
                 os.makedirs(self.simple_filename)
             for i, note in enumerate(notes):
-                output_file_path = os.path.join(self.simple_filename, str(i) + '.txt')
+                basename = note['title'].replace(' ','_').replace('/','-') + " (" + note['modifydate'] + " - " + str(i) + ")"
+                output_file_path = os.path.join(self.simple_filename, basename + '.txt')
+                if os.path.exists(output_file_path):
+                    print "Not creating second file called %s" % output_file_path
+                    continue
+
                 with open(output_file_path, 'w') as output_file:
                     output_file.write(note['content'].encode(encoding='utf-8'))
+                mtime = int(time.mktime(parse(note['modifydate']).timetuple()))
+                os.utime(output_file_path, (mtime, mtime))
+
+                for resource in note['resources']:
+                    resource_output_path = os.path.join(self.simple_filename, basename + "-" + resource['filename'])
+                    rh = open(resource_output_path, "wb")
+                    rh.write(resource["data"].decode("base64"))
+                    rh.close()
